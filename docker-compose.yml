@@ -26,6 +26,19 @@ services:
       # profile in data-dir, which is the existing behaviour.
       REWARDS_ACCOUNTS: ${REWARDS_ACCOUNTS:-}
       OLLAMA_HOST: ${OLLAMA_HOST:-}
+      # QUERY_SOURCE=llm with an OpenAI-compatible endpoint: LLM_PROVIDER is
+      # openrouter or local, and the values themselves live in .env, which is
+      # gitignored, so the key never lands in this file.
+      LLM_PROVIDER: ${LLM_PROVIDER:-local}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/free}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_HTTP_REFERER: ${OPENROUTER_HTTP_REFERER:-}
+      OPENROUTER_TITLE: ${OPENROUTER_TITLE:-}
+      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://localhost:11434/v1}
+      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-gemma4:cloud}
+      LOCAL_LLM_API_KEY: ${LOCAL_LLM_API_KEY:-}
+      LLM_REQUEST_TIMEOUT_SECONDS: ${LLM_REQUEST_TIMEOUT_SECONDS:-60}
     volumes:
       # Keeps the sign-in across container rebuilds.
       - ./data-dir:/app/data-dir
