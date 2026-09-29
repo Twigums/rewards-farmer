@@ -137,7 +137,7 @@ They run one after another, and an account that fails is reported and skipped ra
 
 ## Docker
 
-Runs the bot without installing Edge, a driver or Python on the host.
+Runs the bot without installing a browser, a driver or Python on the host. The image uses Chromium rather than Edge, because Edge has no Linux arm64 build; this way the same image runs on amd64 and on arm64 machines such as a Raspberry Pi.
 
 ```sh
 docker compose build
@@ -152,7 +152,7 @@ The container defaults to `QUERY_SOURCE=trends`, so it needs no Ollama account a
 docker compose run --rm --service-ports signin
 ```
 
-Open <http://localhost:6080>, sign in, then close the Edge window on that screen. The container exits on its own and the profile is ready. Nothing is installed on the host, and the host operating system stops mattering, because the profile is written inside the container rather than on the host. The screen is an ordinary web page, so whatever browser you already have will do.
+Open <http://localhost:6080> and sign in on the Rewards page. Then, in the same window, go to <https://www.bing.com> and check the top right: if it says **Sign in**, sign in there too and accept the cookie banner. Edge signs Bing in along with the browser, Chromium does not, and without this step every search runs anonymously and earns nothing (search points stay at 0 while the daily set still completes). Finally close the browser window on that screen with its close button rather than Ctrl-C, so the profile is saved cleanly. The container exits on its own and the profile is ready. Nothing is installed on the host, and the host operating system stops mattering, because the profile is written inside the container rather than on the host. The screen is an ordinary web page, so whatever browser you already have will do.
 
 `--service-ports` is not optional. `docker compose run` publishes no ports without it, and the page then never loads.
 
@@ -164,7 +164,7 @@ REWARDS_ACCOUNTS=personal docker compose run --rm --service-ports signin
 
 The port is published on `127.0.0.1` only, so it is not reachable from the network. While the service is up it is showing a live Microsoft sign-in page.
 
-Signing in signs the browser in, not just the website, so Edge may sync bookmarks and autofill into the profile it just created. `data-dir` is a bot profile living in the project directory rather than your everyday browser profile, and it is gitignored, but it is worth knowing what ends up there.
+Signing in signs the browser in, not just the website, so the browser may sync bookmarks and autofill into the profile it just created. `data-dir` is a bot profile living in the project directory rather than your everyday browser profile, and it is gitignored, but it is worth knowing what ends up there.
 
 <details>
 <summary>Why sign-in has to happen inside the container</summary>
@@ -175,7 +175,7 @@ On **Linux** with no keyring running it falls back to a fixed key, which is true
 
 On **Windows** the key is wrapped with DPAPI and tied to the Windows account that wrote it, and the container has no DPAPI. A profile signed in with a normal Windows Edge window reported 73 cookies on disk, of which Edge in the container could read 19 — the ones it had just set itself — while `.MSA.Auth` and `ANON`, the ones the sign-in actually rests on, came back absent. The container starts, looks healthy and behaves as though it were logged out. **macOS** wraps the key with the login Keychain, which the container cannot reach either.
 
-Signing in through the container sidesteps all of this: the profile is written by the same Edge that later reads it, so the two never disagree about the key.
+Signing in through the container sidesteps all of this: the profile is written by the same browser that later reads it, so the two never disagree about the key.
 
 </details>
 
@@ -197,6 +197,20 @@ REWARDS_ACCOUNTS=spare    docker compose run --rm --service-ports signin
 
 REWARDS_ACCOUNTS=personal,spare docker compose run --rm rewards-farmer
 ```
+
+### Running it every day
+
+Once a manual run works, cron can start it daily. The job goes in root's crontab when your user is not in the `docker` group; otherwise your own crontab works. `-T` because cron has no terminal, and the random sleep keeps the start time from being identical every day:
+
+```sh
+sudo crontab -e
+```
+
+```cron
+0 9 * * * sleep $((RANDOM \% 3600)) && cd /path/to/rewards-farmer && docker compose run --rm -T rewards-farmer >> rewards-farmer-cron.log 2>&1
+```
+
+Cron runs `/bin/sh`, where `$RANDOM` may be empty; add `SHELL=/bin/bash` above the line. The log file matches `*.log` and is gitignored.
 
 `REWARDS_HEADLESS=1` is set in the image. It also works on the host if you want a run with no visible window; the pointer code needs an explicit window size in that mode, which `main.py` sets.
 

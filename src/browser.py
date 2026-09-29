@@ -15,6 +15,11 @@ import log_utils
 
 HEADLESS = os.environ.get("REWARDS_HEADLESS", "").strip().lower() in ("1", "true", "yes")
 
+HEADLESS_USER_AGENT = (
+	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+	"(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0"
+)
+
 logger = logging.getLogger(__name__)
 
 # Matched in order against the driver's message, lowercased. selenium reports
@@ -43,8 +48,8 @@ EXPLANATIONS = [
 ]
 
 
-def build_options(account: accounts.Account) -> webdriver.EdgeOptions:
-	options = webdriver.EdgeOptions()
+def build_options(account: accounts.Account) -> webdriver.ChromeOptions:
+	options = webdriver.ChromeOptions()
 
 	options.add_experimental_option("excludeSwitches", ["enable-automation"])
 	options.add_experimental_option("useAutomationExtension", False)
@@ -52,8 +57,8 @@ def build_options(account: accounts.Account) -> webdriver.EdgeOptions:
 	options.add_argument(f"--user-data-dir={account.user_data_dir}")
 	options.add_argument(f"--profile-directory={account.profile_name}")
 
-	if os.environ.get("EDGE_BINARY"):
-		options.binary_location = os.environ["EDGE_BINARY"]
+	if os.environ.get("CHROME_BINARY"):
+		options.binary_location = os.environ["CHROME_BINARY"]
 
 	if HEADLESS:
 		# A container has no display. The window size is set explicitly because
@@ -61,19 +66,24 @@ def build_options(account: accounts.Account) -> webdriver.EdgeOptions:
 		# headless window is small enough to put cards out of reach.
 		options.add_argument("--headless=new")
 		options.add_argument("--window-size=1920,1080")
+		# Headless announces itself as HeadlessChrome in navigator.userAgent,
+		# and Bing credits no search points to it. The header override in
+		# rewards_tasks covers one tab's requests only, not the page's scripts
+		# or tabs opened later.
+		options.add_argument(f"--user-agent={HEADLESS_USER_AGENT}")
 		options.add_argument("--no-sandbox")
 		options.add_argument("--disable-dev-shm-usage")
 
 	return options
 
 
-def build_service() -> webdriver.EdgeService:
+def build_service() -> webdriver.ChromeService:
 	driver_log = os.environ.get("REWARDS_DRIVER_LOG")
 
 	# An explicit driver path skips Selenium Manager entirely, which is also
 	# what fails in #79 when it cannot locate the Edge install.
-	return webdriver.EdgeService(
-		executable_path=os.environ.get("MSEDGEDRIVER_PATH") or None,
+	return webdriver.ChromeService(
+		executable_path=os.environ.get("CHROMEDRIVER_PATH") or None,
 		service_args=["--verbose"] if driver_log else None,
 		log_output=driver_log or None,
 	)
@@ -99,7 +109,7 @@ def explain(exc: Exception) -> list[str]:
 def start_driver(account: accounts.Account):
 	"""An Edge driver for the account, or None after logging why it failed."""
 	try:
-		return webdriver.Edge(options=build_options(account), service=build_service())
+		return webdriver.Chrome(options=build_options(account), service=build_service())
 	except WebDriverException as exc:
 		logger.error("[FAIL] %s: could not start Edge with this profile.", account.name)
 		logger.error("       profile directory: %s", account.user_data_dir)

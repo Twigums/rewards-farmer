@@ -1,7 +1,10 @@
-# Runs the bot without installing Edge, a driver or Python on the host.
+# Runs the bot without installing a browser, a driver or Python on the host.
 #
-# The image carries only what main.py actually reaches: selenium and numpy.
-# pygetwindow, keyboard, matplotlib and pygame are used solely by the
+# The browser is Chromium rather than Edge: Edge has no Linux arm64 build, and
+# Debian's chromium runs on both amd64 and arm64 (a Raspberry Pi, for one).
+#
+# The image carries only what main.py actually reaches: selenium, numpy,
+# python-dotenv, requests, ollama and pillow. pygetwindow, keyboard, matplotlib and pygame are used solely by the
 # recording and visualisation scripts, which are developer tools rather than
 # part of a run, and two of them are Windows-only.
 #
@@ -13,31 +16,20 @@ FROM python:3.12-slim-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Edge, from Microsoft's own repository.
+# Chromium and its driver from Debian. Edge has no Linux arm64 build, so it
+# cannot be installed on a Raspberry Pi; Debian's chromium and chromium-driver
+# come from the same source package and so always match each other.
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
-		ca-certificates curl gnupg unzip fonts-liberation \
-	&& curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
-		| gpg --dearmor -o /usr/share/keyrings/microsoft.gpg \
-	&& echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/edge stable main" \
-		> /etc/apt/sources.list.d/microsoft-edge.list \
-	&& apt-get update \
-	&& apt-get install -y --no-install-recommends microsoft-edge-stable \
-	&& rm -rf /var/lib/apt/lists/*
+		ca-certificates fonts-liberation chromium chromium-driver \
+	&& rm -rf /var/lib/apt/lists/* \
+	&& chromium --version && chromedriver --version
 
-# The driver has to match the browser build, so it is pinned to whatever Edge
-# the layer above installed rather than to "latest", which drifts apart from it
-# between releases.
-RUN EDGE_VERSION="$(microsoft-edge --version | awk '{print $3}')" \
-	&& curl -fsSL -o /tmp/edgedriver.zip \
-		"https://msedgedriver.microsoft.com/${EDGE_VERSION}/edgedriver_linux64.zip" \
-	&& unzip -j /tmp/edgedriver.zip msedgedriver -d /usr/local/bin \
-	&& chmod +x /usr/local/bin/msedgedriver \
-	&& rm /tmp/edgedriver.zip \
-	&& msedgedriver --version
+ENV CHROME_BINARY=/usr/bin/chromium \
+	CHROMEDRIVER_PATH=/usr/bin/chromedriver
 
 # Signing in needs a browser window, and the profile has to be written by the
-# container's own Edge: Chromium takes the cookie key from the operating system,
+# container's own Chromium: Chromium takes the cookie key from the operating system,
 # and on a Windows or macOS host that key is wrapped with DPAPI or the login
 # Keychain, neither of which the container can unwrap. Xvfb gives that browser a
 # display and noVNC puts it on the user's screen with nothing installed on the
@@ -52,7 +44,9 @@ RUN apt-get update \
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir "selenium>=4.46.0,<5.0.0" "numpy"
+RUN pip install --no-cache-dir \
+	"selenium>=4.46.0,<5.0.0" "numpy" "python-dotenv>=1.0.1,<2.0.0" \
+	"requests>=2.32.3,<3.0.0" "ollama>=0.6.2,<0.7.0" "pillow>=12.3.0,<13.0.0"
 
 COPY src/ ./src/
 COPY nouns.txt ./

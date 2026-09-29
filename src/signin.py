@@ -191,7 +191,7 @@ def display_stack():
 def browser_command(account: accounts.Account) -> list[str]:
 	"""Edge, headful, on the virtual display, opened at the sign-in page."""
 	return [
-		"microsoft-edge",
+		"chromium",
 		f"--user-data-dir={account.user_data_dir}",
 		f"--profile-directory={account.profile_name}",
 		# A container runs as root on a filesystem the sandbox cannot use, and
