@@ -55,7 +55,7 @@ def exception_summary(exc: BaseException) -> str:
 # CRITICAL is the longest level name at 8 characters, so pad to that and the
 # message column stays aligned no matter what is being logged.
 LOG_FORMAT = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
-DATE_FORMAT = "%H:%M:%S"
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 _configured = False
 

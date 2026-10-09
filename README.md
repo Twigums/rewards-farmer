@@ -92,6 +92,8 @@ OPENROUTER_MODEL=openai/gpt-4o-mini
 # LOCAL_LLM_MODEL=gemma3:4b
 ```
 
+`OPENROUTER_API_KEY` can hold several keys separated by commas (`OPENROUTER_API_KEY=key1,key2,key3`). The first is used until OpenRouter refuses it for being out of credits, over its spending limit, rate limited or revoked, and then the next one takes over for that request and the ones after it. OpenRouter applies free model rate limits per account, so backup keys only help with those if they belong to different accounts.
+
 For OpenRouter, the code uses the OpenAI-compatible chat completions API at `https://openrouter.ai/api/v1/chat/completions`. For local models, the endpoint must also be OpenAI-compatible. More configuration options can be found in [`.env.example`](.env.example).
 
 If the configuration options are not provided, they default to `LLM_PROVIDER=local`, `LOCAL_LLM_BASE_URL=http://localhost:11434/v1`, `LOCAL_LLM_MODEL=gemma4:cloud`, and `OPENROUTER_MODEL=openrouter/free`.

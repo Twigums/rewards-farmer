@@ -40,7 +40,16 @@ USER_PROMPT_FOR_SEARCH_QUERY_CONTINUATION = """Generate the next search query.""
 
 MAX_EMPTY_RETRIES = 5
 
+# What OpenRouter answers when the key, not the request, is the problem: 401
+# revoked or invalid, 402 out of credits, 403 key spending limit reached, 429
+# rate limited. Another key may still go through, so these move on to the next.
+KEY_EXHAUSTED_STATUSES = frozenset({401, 402, 403, 429})
+
 DEFAULT_LLM_PROVIDER = os.getenv("LLM_PROVIDER", "local").strip().lower()
+
+# Index of the last key that worked, so a spent key is not tried first on
+# every later request.
+_active_key_index = 0
 
 def _get_llm_base_url() -> str:
 	if DEFAULT_LLM_PROVIDER in ("openrouter", "open-router"):
@@ -58,17 +67,27 @@ def _get_llm_model() -> str:
 
 	raise ValueError(f"Unsupported LLM_PROVIDER: {DEFAULT_LLM_PROVIDER}. Supported values are 'openrouter' and 'local'.")
 
-def _get_llm_headers() -> dict[str, str]:
+def _get_llm_api_keys() -> list[str]:
+	"""The keys to try in order. Local endpoints get one, possibly empty."""
+	if DEFAULT_LLM_PROVIDER in {"openrouter", "open-router"}:
+		# Comma separated, so backup keys can take over when the first runs out.
+		api_keys = [key.strip() for key in os.getenv("OPENROUTER_API_KEY", "").split(",") if key.strip()]
+		if not api_keys:
+			raise RuntimeError("OPENROUTER_API_KEY is required when LLM_PROVIDER=openrouter")
+
+		return api_keys
+
+	return [os.getenv("LOCAL_LLM_API_KEY", "").strip()]
+
+def _get_llm_headers(api_key: str) -> dict[str, str]:
 	headers = {
 		"Content-Type": "application/json",
 	}
 
-	if DEFAULT_LLM_PROVIDER in {"openrouter", "open-router"}:
-		api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
-		if not api_key:
-			raise RuntimeError("OPENROUTER_API_KEY is required when LLM_PROVIDER=openrouter")
-
+	if api_key:
 		headers["Authorization"] = f"Bearer {api_key}"
+
+	if DEFAULT_LLM_PROVIDER in {"openrouter", "open-router"}:
 		referer = os.getenv("OPENROUTER_HTTP_REFERER", "").strip()
 		title = os.getenv("OPENROUTER_TITLE", "").strip()
 
@@ -76,25 +95,38 @@ def _get_llm_headers() -> dict[str, str]:
 			headers["HTTP-Referer"] = referer
 		if title:
 			headers["X-Title"] = title
-		return headers
-
-	api_key = os.getenv("LOCAL_LLM_API_KEY", "").strip()
-	if api_key:
-		headers["Authorization"] = f"Bearer {api_key}"
 
 	return headers
 
 def get_llm_response(messages: list[dict[str, str]]) -> str:
-	response = requests.post(
-		f"{_get_llm_base_url()}/chat/completions",
-		headers=_get_llm_headers(),
-		json={
-			"model": _get_llm_model(),
-			"messages": messages,
-		},
-		timeout=float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "60")),
-	)
+	global _active_key_index
+
+	api_keys = _get_llm_api_keys()
+
+	# Start from the key that last worked and go round the rest once. If every
+	# key is refused, the last refusal is the error raised.
+	for attempt in range(len(api_keys)):
+		key_index = (_active_key_index + attempt) % len(api_keys)
+		response = requests.post(
+			f"{_get_llm_base_url()}/chat/completions",
+			headers=_get_llm_headers(api_keys[key_index]),
+			json={
+				"model": _get_llm_model(),
+				"messages": messages,
+			},
+			timeout=float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "60")),
+		)
+
+		if response.status_code not in KEY_EXHAUSTED_STATUSES or attempt == len(api_keys) - 1:
+			break
+
+		logger.warning(
+			"LLM API key %s/%s was refused (HTTP %s), trying the next one",
+			key_index + 1, len(api_keys), response.status_code,
+		)
+
 	response.raise_for_status()
+	_active_key_index = key_index
 
 	content = response.json()["choices"][0]["message"]["content"]
 
